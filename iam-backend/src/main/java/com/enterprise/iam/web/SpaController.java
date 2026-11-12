@@ -52,7 +52,7 @@ public class SpaController {
     private void writeSpa(HttpServletResponse response) throws IOException {
         response.setCharacterEncoding(StandardCharsets.UTF_8.name());
         response.setContentType(new MediaType("text", "html", StandardCharsets.UTF_8).toString());
-        ClassPathResource index = new ClassPathResource("static/index.html");
+        ClassPathResource index = new ClassPathResource("META-INF/resources/index.html");
         if (index.exists() && index.isReadable()) {
             try (InputStream input = index.getInputStream()) {
                 StreamUtils.copy(input, response.getOutputStream());

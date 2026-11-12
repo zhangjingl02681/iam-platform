@@ -14,7 +14,7 @@
 - JDK 21（构建与运行都需要）
 - 本地运行需要 PostgreSQL 16；可用下面的 Docker Compose 启动
 - 项目已包含 Maven Wrapper（`./mvnw`），安装 JDK 后不必再单独安装 Maven
-- 构建前端需要 Node.js（建议当前 LTS）。`./mvnw` 会调用 `scripts/build-frontend.sh`；也可在 `frontend/` 下使用 `npm`
+- 构建前端需要 Node.js。根目录执行 `./mvnw` 时，`iam-frontend` 模块会通过 frontend-maven-plugin 下载固定的 Node LTS 并完成构建，无需预先安装 Node。仅做前端开发时，也可在 `iam-frontend/` 下使用本机 `npm`。
 - 本机若无 Docker，集成测试仍可运行：测试使用嵌入式 PostgreSQL 16（Zonky），不依赖 Docker 或 H2
 
 ## 启动数据库
@@ -34,31 +34,32 @@ docker compose up -d
 ```bash
 export JAVA_HOME=/path/to/jdk-21
 # 开发环境启用引导管理员与演示 OIDC 客户端
-./mvnw spring-boot:run -Dspring-boot.run.profiles=dev
+# -am 会先构建 iam-frontend web jar，再启动后端
+./mvnw -pl iam-backend -am spring-boot:run -Dspring-boot.run.profiles=dev
 ```
 
-或：
+或先打包再运行可执行 Spring Boot jar：
 
 ```bash
 ./mvnw -DskipTests package
-java -Dspring.profiles.active=dev -jar target/iam-platform-0.1.0-SNAPSHOT.jar
+java -Dspring.profiles.active=dev -jar iam-backend/target/iam-backend-0.1.0-SNAPSHOT.jar
 ```
 
 健康检查：`GET http://localhost:8080/actuator/health`（无需登录）。
 
-浏览器打开 `http://localhost:8080/`，未登录会跳转到 `/login`。Maven 启动前会构建前端并打包进静态资源，因此该命令同时提供 UI 与 API。
+浏览器打开 `http://localhost:8080/`，未登录会跳转到 `/login`。前端以 web jar（`com.enterprise:iam-frontend`）依赖的方式打进后端，静态资源位于 `META-INF/resources/`（`index.html` 与 `/assets/**` 从应用根路径提供，而不是 `/webjars/...`），因此上述命令同时提供 UI 与 API。
 
 ### 仅前端开发
 
 后端先以 `dev` 配置在 8080 端口运行，再启动 Vite 开发服务器（将 `/api`、`/login`（仅 POST）、`/logout`、`/oauth2`、`/userinfo`、`/csrf` 等代理到 8080）：
 
 ```bash
-cd frontend
+cd iam-frontend
 npm install
 npm run dev
 ```
 
-浏览器访问 Vite 地址（默认 `http://localhost:5173`）。前端单元测试：`npm test`。
+浏览器访问 Vite 地址（默认 `http://localhost:5173`）。Vite 仍将 `/api`、`/login`（仅 POST）、`/logout`、`/oauth2`、`/userinfo`、`/csrf` 等代理到 8080。前端单元测试：在 `iam-frontend/` 下执行 `npm test`，或通过根目录 `./mvnw test` 在前端模块的 `test` 阶段运行。
 
 ### 前端界面
 
@@ -73,7 +74,7 @@ npm run dev
 | `/admin/**` | 仅 `ROLE_ADMIN`：用户、组织、应用目录、导入任务记录、只读审计、会话管理 |
 | `/consent` | OIDC 授权许可页（演示客户端 `iam-demo-consent` 会进入此页） |
 
-生产构建由 Maven `generate-resources` 调用 `scripts/build-frontend.sh`，将 `frontend/dist` 复制到 `target/classes/static`，因此打包后的 jar 即可同时提供 UI 与 API。`./mvnw test` 会同时运行后端集成测试与前端 Vitest。
+生产构建在 `iam-frontend` 模块中完成：Vite 把产物写入该模块 jar 的 `META-INF/resources/`，后端通过 Maven 依赖引入这个 web jar。`./mvnw test` 会按反应器顺序同时运行前端 Vitest 与后端集成测试。
 
 ### 浏览器会话与 CSRF
 
@@ -252,6 +253,28 @@ curl -u admin:ChangeMe_Admin_Dev_Only! \
 
 ## 模块结构
 
+本仓库是 Maven 多模块构建（父工程 `com.enterprise:iam-platform:0.1.0-SNAPSHOT`，packaging `pom`）：
+
+```
+iam-platform/                 # 父 POM
+  iam-frontend/               # com.enterprise:iam-frontend，packaging jar（web jar，非 war，也不做 Spring Boot repackage）
+  iam-backend/                # com.enterprise:iam-backend，Spring Boot 可执行 jar
+```
+
+反应器顺序为先 `iam-frontend`、后 `iam-backend`。后端依赖：
+
+```xml
+<dependency>
+  <groupId>com.enterprise</groupId>
+  <artifactId>iam-frontend</artifactId>
+  <version>${project.version}</version>
+</dependency>
+```
+
+可运行产物为 `iam-backend/target/iam-backend-0.1.0-SNAPSHOT.jar`。
+
+Java 包仍位于 `iam-backend` 模块中：
+
 ```
 com.enterprise.iam
   config        安全与引导配置
@@ -267,16 +290,22 @@ com.enterprise.iam
   common        异常与 Problem Detail
 ```
 
-数据库迁移：`src/main/resources/db/migration/V1__init_schema.sql`、`V2__oidc_authorization.sql`、`V3__application_launch_url.sql`。应用使用 `ddl-auto=validate`，表结构由 Flyway 管理。授权码、刷新令牌与客户端密钥只存哈希，不存明文。
+数据库迁移：`iam-backend/src/main/resources/db/migration/V1__init_schema.sql`、`V2__oidc_authorization.sql`、`V3__application_launch_url.sql`。应用使用 `ddl-auto=validate`，表结构由 Flyway 管理。授权码、刷新令牌与客户端密钥只存哈希，不存明文。
 
 ## 构建与测试
 
 ```bash
-./mvnw -q test
-./mvnw -q -DskipTests package
+./mvnw test
+./mvnw package
 ```
 
-测试会启动嵌入式 PostgreSQL 16（Zonky），执行 Flyway，并覆盖：用户创建与用户名唯一约束、口令不为明文且为 Argon2id、审计行写入、组织与改密、禁用后无法登录、导入任务记录；应用目录与门户应用列表、会话自助与管理员注销、只读审计过滤、表单登录会话调用 API、登录错误分类与 CSRF；以及 OIDC 发现文档、授权码 + PKCE（`sub` 为用户 UUID、UserInfo）、需要许可的授权码流程、客户端凭证、刷新令牌轮换与重放拒绝、健康检查与 HTTP Basic 管理 API 仍可用。同一命令还会运行 `frontend` 下的 Vitest 组件测试。
+在仓库根目录执行即可构建整个反应器。`./mvnw test` 会先构建并测试 `iam-frontend`（Vitest），再运行 `iam-backend` 的 Surefire 集成测试。测试会启动嵌入式 PostgreSQL 16（Zonky），执行 Flyway，并覆盖：用户创建与用户名唯一约束、口令不为明文且为 Argon2id、审计行写入、组织与改密、禁用后无法登录、导入任务记录；应用目录与门户应用列表、会话自助与管理员注销、只读审计过滤、表单登录会话调用 API、登录错误分类与 CSRF；前端 web jar 中的 `META-INF/resources/index.html` 作为登录页与 SPA 回退；以及 OIDC 发现文档、授权码 + PKCE（`sub` 为用户 UUID、UserInfo）、需要许可的授权码流程、客户端凭证、刷新令牌轮换与重放拒绝、健康检查与 HTTP Basic 管理 API 仍可用。
+
+只打包、跳过测试：
+
+```bash
+./mvnw -DskipTests package
+```
 
 ## 本期范围 / 后续工作
 

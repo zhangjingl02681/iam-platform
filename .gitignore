@@ -1,5 +1,5 @@
 HELP.md
-target/
+**/target/
 .mvn/wrapper/maven-wrapper.jar
 !**/src/main/**/target/
 !**/src/test/**/target/
@@ -35,7 +35,8 @@ build/
 # Generated dev signing keys (never commit production material)
 .data/
 
-# Frontend
-frontend/node_modules/
-frontend/dist/
-frontend/coverage/
+# Frontend (Vite + frontend-maven-plugin Node install)
+iam-frontend/node_modules/
+iam-frontend/dist/
+iam-frontend/coverage/
+iam-frontend/node/
