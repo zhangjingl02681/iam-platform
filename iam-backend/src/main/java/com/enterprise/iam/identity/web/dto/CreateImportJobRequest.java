@@ -5,5 +5,6 @@ import jakarta.validation.constraints.Size;
 
 public record CreateImportJobRequest(
         @NotBlank @Size(max = 32) String type,
-        String fileRef) {
+        String fileRef,
+        String csv) {
 }

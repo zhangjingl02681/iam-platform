@@ -9,6 +9,8 @@ import { AdminAudit } from "./pages/admin/AdminAudit";
 import { AdminHome } from "./pages/admin/AdminHome";
 import { AdminImportJobs } from "./pages/admin/AdminImportJobs";
 import { AdminOrgs } from "./pages/admin/AdminOrgs";
+import { AdminPolicies } from "./pages/admin/AdminPolicies";
+import { AdminRoles } from "./pages/admin/AdminRoles";
 import { AdminSessions } from "./pages/admin/AdminSessions";
 import { AdminUserEditor, AdminUsers } from "./pages/admin/AdminUsers";
 import { ConsentPage } from "./pages/ConsentPage";
@@ -155,7 +157,9 @@ export function App() {
         <Route path="users/new" element={<AdminUserEditor />} />
         <Route path="users/:id" element={<AdminUserEditor />} />
         <Route path="orgs" element={<AdminOrgs />} />
+        <Route path="roles" element={<AdminRoles />} />
         <Route path="applications" element={<AdminApplications />} />
+        <Route path="policies" element={<AdminPolicies />} />
         <Route path="import-jobs" element={<AdminImportJobs />} />
         <Route path="audit" element={<AdminAudit />} />
         <Route path="sessions" element={<AdminSessions />} />

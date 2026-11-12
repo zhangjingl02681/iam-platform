@@ -2,7 +2,7 @@ import { FormEvent, useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { api, formatDateTime, statusLabel } from "../../api/client";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
-import type { OrgNode, PageResponse, UserProfile } from "../../api/types";
+import type { OrgNode, PageResponse, Role, UserProfile } from "../../api/types";
 
 export function AdminUsers() {
   const [username, setUsername] = useState("");
@@ -144,12 +144,15 @@ export function AdminUserEditor() {
     primaryOrgId: "",
   });
   const [resetPassword, setResetPassword] = useState("");
+  const [roles, setRoles] = useState<Role[]>([]);
+  const [assignRoleId, setAssignRoleId] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [confirm, setConfirm] = useState<"disable" | "enable" | "terminate" | null>(null);
 
   useEffect(() => {
     void api<OrgNode[]>("/api/v1/orgs/tree").then(setOrgs);
+    void api<PageResponse<Role>>("/api/v1/roles?size=100").then((result) => setRoles(result.content));
     if (!isNew && id) {
       void api<UserProfile>(`/api/v1/users/${id}`).then((loaded) => {
         setUser(loaded);
@@ -243,6 +246,33 @@ export function AdminUserEditor() {
     }
   }
 
+  async function assignRole() {
+    if (!id || isNew || !assignRoleId) return;
+    try {
+      const updated = await api<UserProfile>(`/api/v1/users/${id}/roles`, {
+        method: "POST",
+        body: JSON.stringify({ roleId: assignRoleId }),
+      });
+      setUser(updated);
+      setAssignRoleId("");
+      setSuccess("角色已分配。");
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  }
+
+  async function removeRole(roleId: string) {
+    if (!id || isNew) return;
+    try {
+      await api(`/api/v1/users/${id}/roles/${roleId}`, { method: "DELETE" });
+      const updated = await api<UserProfile>(`/api/v1/users/${id}`);
+      setUser(updated);
+      setSuccess("角色已移除。");
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  }
+
   const orgOptions = flattenOrgs(orgs);
 
   return (
@@ -320,6 +350,35 @@ export function AdminUserEditor() {
                 </button>
               ) : null}
             </div>
+          </div>
+          <div className="panel" style={{ width: "auto" }}>
+            <h2>角色</h2>
+            <p className="hint">为该用户分配或移除角色。内置 admin 角色不能从最后一名管理员身上移除。</p>
+            <ul>
+              {(user.roles || []).map((role) => (
+                <li key={role.id}>
+                  {role.name} <span className="mono">{role.code}</span>{" "}
+                  <button type="button" className="btn ghost" onClick={() => void removeRole(role.id)}>
+                    移除
+                  </button>
+                </li>
+              ))}
+            </ul>
+            {(user.roles || []).length === 0 ? <p className="hint">尚未分配角色。</p> : null}
+            <label className="field">
+              分配角色
+              <select value={assignRoleId} onChange={(e) => setAssignRoleId(e.target.value)}>
+                <option value="">选择角色</option>
+                {roles.map((role) => (
+                  <option key={role.id} value={role.id}>
+                    {role.name} ({role.code})
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button type="button" className="btn secondary" disabled={!assignRoleId} onClick={() => void assignRole()}>
+              分配
+            </button>
           </div>
           <div className="panel" style={{ width: "auto" }}>
             <h2>重置口令</h2>

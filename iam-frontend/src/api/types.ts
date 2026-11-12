@@ -12,6 +12,7 @@ export interface UserProfile {
   updatedAt?: string;
   assignments?: Assignment[];
   attributes?: AttributeValue[];
+  roles?: Role[];
 }
 
 export interface Assignment {
@@ -124,4 +125,46 @@ export interface ApiError {
   title?: string;
   detail?: string;
   code?: string;
+}
+
+export interface Role {
+  id: string;
+  code: string;
+  name: string;
+  description?: string | null;
+  status: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface Entitlement {
+  id: string;
+  applicationId: string;
+  subjectType: "USER" | "ORG" | "ROLE" | string;
+  subjectId: string;
+  createdAt?: string;
+}
+
+export interface Policy {
+  id: string;
+  code: string;
+  name: string;
+  description?: string | null;
+  status: string;
+  createdBy?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface PolicyVersion {
+  id: string;
+  policyId: string;
+  version: number;
+  language?: string | null;
+  document: string;
+  checksum?: string | null;
+  status: string;
+  publishedAt?: string | null;
+  comment?: string | null;
+  createdAt?: string;
 }

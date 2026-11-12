@@ -7,7 +7,7 @@ iam:
       enabled: true
       username: admin
       # Override in the environment: IAM_BOOTSTRAP_ADMIN_PASSWORD
-      password: ${IAM_BOOTSTRAP_ADMIN_PASSWORD:ChangeMe_Admin_Dev_Only!}
+      password: ${IAM_BOOTSTRAP_ADMIN_PASSWORD:ChangeMe_Admin_Dev_Only1!}
       display-name: 系统管理员
     clients:
       enabled: true

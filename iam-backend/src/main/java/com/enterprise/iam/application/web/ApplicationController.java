@@ -1,18 +1,23 @@
 package com.enterprise.iam.application.web;
 
 import com.enterprise.iam.application.domain.ApplicationStatus;
+import com.enterprise.iam.application.service.ApplicationEntitlementService;
 import com.enterprise.iam.application.service.ApplicationService;
 import com.enterprise.iam.application.web.dto.ApplicationResponse;
 import com.enterprise.iam.application.web.dto.CreateApplicationRequest;
+import com.enterprise.iam.application.web.dto.CreateEntitlementRequest;
+import com.enterprise.iam.application.web.dto.EntitlementResponse;
 import com.enterprise.iam.application.web.dto.UpdateApplicationRequest;
 import com.enterprise.iam.common.web.PageResponse;
 import jakarta.validation.Valid;
 import java.net.URI;
+import java.util.List;
 import java.util.UUID;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.web.PageableDefault;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -27,9 +32,12 @@ import org.springframework.web.bind.annotation.RestController;
 public class ApplicationController {
 
     private final ApplicationService applicationService;
+    private final ApplicationEntitlementService entitlementService;
 
-    public ApplicationController(ApplicationService applicationService) {
+    public ApplicationController(
+            ApplicationService applicationService, ApplicationEntitlementService entitlementService) {
         this.applicationService = applicationService;
+        this.entitlementService = entitlementService;
     }
 
     @PostMapping
@@ -58,5 +66,28 @@ public class ApplicationController {
     @PreAuthorize("hasRole('ADMIN')")
     public ApplicationResponse update(@PathVariable UUID id, @Valid @RequestBody UpdateApplicationRequest request) {
         return applicationService.update(id, request);
+    }
+
+    @GetMapping("/{id}/entitlements")
+    @PreAuthorize("hasRole('ADMIN')")
+    public List<EntitlementResponse> listEntitlements(@PathVariable UUID id) {
+        return entitlementService.list(id);
+    }
+
+    @PostMapping("/{id}/entitlements")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<EntitlementResponse> addEntitlement(
+            @PathVariable UUID id, @Valid @RequestBody CreateEntitlementRequest request) {
+        EntitlementResponse created = entitlementService.add(id, request);
+        return ResponseEntity.created(
+                        URI.create("/api/v1/applications/" + id + "/entitlements/" + created.id()))
+                .body(created);
+    }
+
+    @DeleteMapping("/{id}/entitlements/{entitlementId}")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<Void> removeEntitlement(@PathVariable UUID id, @PathVariable UUID entitlementId) {
+        entitlementService.remove(id, entitlementId);
+        return ResponseEntity.noContent().build();
     }
 }

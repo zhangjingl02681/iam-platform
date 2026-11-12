@@ -3,20 +3,25 @@ package com.enterprise.iam.identity.web;
 import com.enterprise.iam.common.web.PageResponse;
 import com.enterprise.iam.identity.domain.UserStatus;
 import com.enterprise.iam.identity.service.PasswordService;
+import com.enterprise.iam.identity.service.RoleService;
 import com.enterprise.iam.identity.service.UserService;
 import com.enterprise.iam.identity.web.dto.AdminSetPasswordRequest;
 import com.enterprise.iam.identity.web.dto.AssignOrgRequest;
+import com.enterprise.iam.identity.web.dto.AssignRoleRequest;
 import com.enterprise.iam.identity.web.dto.CreateUserRequest;
+import com.enterprise.iam.identity.web.dto.RoleResponse;
 import com.enterprise.iam.identity.web.dto.SetAttributesRequest;
 import com.enterprise.iam.identity.web.dto.UpdateUserRequest;
 import com.enterprise.iam.identity.web.dto.UserResponse;
 import jakarta.validation.Valid;
 import java.net.URI;
+import java.util.List;
 import java.util.UUID;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.web.PageableDefault;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -33,10 +38,12 @@ public class UserController {
 
     private final UserService userService;
     private final PasswordService passwordService;
+    private final RoleService roleService;
 
-    public UserController(UserService userService, PasswordService passwordService) {
+    public UserController(UserService userService, PasswordService passwordService, RoleService roleService) {
         this.userService = userService;
         this.passwordService = passwordService;
+        this.roleService = roleService;
     }
 
     @PostMapping
@@ -85,6 +92,25 @@ public class UserController {
             @PathVariable UUID id, @Valid @RequestBody AdminSetPasswordRequest request) {
         boolean mustChange = request.mustChange() == null || request.mustChange();
         passwordService.setPassword(id, request.newPassword(), mustChange, true);
+        return ResponseEntity.noContent().build();
+    }
+
+    @GetMapping("/{id}/roles")
+    @PreAuthorize("hasRole('ADMIN')")
+    public List<RoleResponse> listRoles(@PathVariable UUID id) {
+        return roleService.listForUser(id);
+    }
+
+    @PostMapping("/{id}/roles")
+    @PreAuthorize("hasRole('ADMIN')")
+    public UserResponse assignRole(@PathVariable UUID id, @Valid @RequestBody AssignRoleRequest request) {
+        return roleService.assignToUser(id, request.roleId());
+    }
+
+    @DeleteMapping("/{id}/roles/{roleId}")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<Void> removeRole(@PathVariable UUID id, @PathVariable UUID roleId) {
+        roleService.removeFromUser(id, roleId);
         return ResponseEntity.noContent().build();
     }
 }

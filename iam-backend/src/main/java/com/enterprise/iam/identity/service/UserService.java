@@ -12,12 +12,15 @@ import com.enterprise.iam.identity.domain.IamUserAttribute;
 import com.enterprise.iam.identity.domain.UserStatus;
 import com.enterprise.iam.identity.repo.IamOrgRepository;
 import com.enterprise.iam.identity.repo.IamPositionRepository;
+import com.enterprise.iam.identity.repo.IamRoleRepository;
 import com.enterprise.iam.identity.repo.IamUserAssignmentRepository;
 import com.enterprise.iam.identity.repo.IamUserAttributeRepository;
 import com.enterprise.iam.identity.repo.IamUserRepository;
+import com.enterprise.iam.identity.repo.IamUserRoleRepository;
 import com.enterprise.iam.identity.web.dto.AssignOrgRequest;
 import com.enterprise.iam.identity.web.dto.AttributeValueRequest;
 import com.enterprise.iam.identity.web.dto.CreateUserRequest;
+import com.enterprise.iam.identity.web.dto.RoleResponse;
 import com.enterprise.iam.identity.web.dto.UpdateUserRequest;
 import com.enterprise.iam.identity.web.dto.UserResponse;
 import java.util.LinkedHashMap;
@@ -40,6 +43,8 @@ public class UserService {
     private final IamPositionRepository positionRepository;
     private final IamUserAssignmentRepository assignmentRepository;
     private final IamUserAttributeRepository attributeRepository;
+    private final IamUserRoleRepository userRoleRepository;
+    private final IamRoleRepository roleRepository;
     private final PasswordService passwordService;
     private final AuditService auditService;
 
@@ -49,6 +54,8 @@ public class UserService {
             IamPositionRepository positionRepository,
             IamUserAssignmentRepository assignmentRepository,
             IamUserAttributeRepository attributeRepository,
+            IamUserRoleRepository userRoleRepository,
+            IamRoleRepository roleRepository,
             PasswordService passwordService,
             AuditService auditService) {
         this.userRepository = userRepository;
@@ -56,6 +63,8 @@ public class UserService {
         this.positionRepository = positionRepository;
         this.assignmentRepository = assignmentRepository;
         this.attributeRepository = attributeRepository;
+        this.userRoleRepository = userRoleRepository;
+        this.roleRepository = roleRepository;
         this.passwordService = passwordService;
         this.auditService = auditService;
     }
@@ -247,10 +256,115 @@ public class UserService {
                 .orElseThrow(() -> new NotFoundException("org_not_found", "Organization not found"));
     }
 
+    @Transactional(readOnly = true)
+    public List<RoleResponse> rolesFor(UUID userId) {
+        return userRoleRepository.findByUserId(userId).stream()
+                .map(assignment -> roleRepository.findById(assignment.getRoleId()).orElse(null))
+                .filter(role -> role != null)
+                .map(RoleResponse::from)
+                .toList();
+    }
+
+    /**
+     * Create or update a user from a bulk import row. Throws {@link BusinessException}
+     * (or a subclass) when the row cannot be applied; the caller records it as a row failure.
+     */
+    @Transactional
+    public IamUser importRow(
+            String username,
+            String displayName,
+            String email,
+            String orgCode,
+            UserStatus status,
+            String temporaryPassword) {
+        String normalized = normalizeUsername(username);
+        if (!normalized.matches("^[a-z0-9._-]{3,64}$")) {
+            throw new BusinessException(
+                    HttpStatus.BAD_REQUEST, "invalid_username", "Username is invalid");
+        }
+        if (!StringUtils.hasText(displayName)) {
+            throw new BusinessException(
+                    HttpStatus.BAD_REQUEST, "invalid_display_name", "Display name is required");
+        }
+        IamOrg org = null;
+        if (StringUtils.hasText(orgCode)) {
+            org = orgRepository
+                    .findByCode(orgCode.trim())
+                    .orElseThrow(() -> new BusinessException(
+                            HttpStatus.BAD_REQUEST,
+                            "org_not_found",
+                            "Organization not found: " + orgCode.trim()));
+        }
+        IamUser user = userRepository.findByUsername(normalized).orElse(null);
+        boolean created = user == null;
+        if (created) {
+            user = new IamUser();
+            user.setUsername(normalized);
+            user.setStatus(status == null ? UserStatus.ACTIVE : status);
+        } else if (user.getStatus() == UserStatus.TERMINATED && status != UserStatus.TERMINATED) {
+            throw new BusinessException(
+                    HttpStatus.CONFLICT, "user_terminated", "A terminated user cannot be reactivated");
+        }
+        user.setDisplayName(displayName.trim());
+        if (email != null) {
+            user.setEmail(blankToNull(email));
+        }
+        if (status != null) {
+            applyStatus(user, status);
+        }
+        if (org != null) {
+            user.setPrimaryOrgId(org.getId());
+        }
+        user = userRepository.save(user);
+        if (org != null) {
+            assignPrimaryOrgIfNeeded(user, org.getId());
+        }
+        if (StringUtils.hasText(temporaryPassword)) {
+            passwordService.setPassword(user.getId(), temporaryPassword, true, false);
+        }
+        if (created) {
+            auditService.record("user.import.create", "create", "user", user.getId(), "success",
+                    Map.of("username", normalized));
+        } else {
+            auditService.record("user.import.update", "update", "user", user.getId(), "success",
+                    Map.of("username", normalized));
+        }
+        return user;
+    }
+
+    private void assignPrimaryOrgIfNeeded(IamUser user, UUID orgId) {
+        assignmentRepository.findByUserIdAndPrimaryIsTrue(user.getId()).ifPresent(existing -> {
+            if (!orgId.equals(existing.getOrgId())) {
+                existing.setPrimary(false);
+                assignmentRepository.save(existing);
+            }
+        });
+        boolean already = assignmentRepository.findByUserId(user.getId()).stream()
+                .anyMatch(item -> orgId.equals(item.getOrgId()));
+        if (!already) {
+            IamUserAssignment assignment = new IamUserAssignment();
+            assignment.setUserId(user.getId());
+            assignment.setOrgId(orgId);
+            assignment.setPrimary(true);
+            assignmentRepository.save(assignment);
+        } else {
+            assignmentRepository.findByUserId(user.getId()).stream()
+                    .filter(item -> orgId.equals(item.getOrgId()))
+                    .forEach(item -> {
+                        if (!item.isPrimary()) {
+                            item.setPrimary(true);
+                            assignmentRepository.save(item);
+                        }
+                    });
+        }
+        user.setPrimaryOrgId(orgId);
+        userRepository.save(user);
+    }
+
     private UserResponse toResponse(IamUser user) {
         List<IamUserAssignment> assignments = assignmentRepository.findByUserId(user.getId());
         List<IamUserAttribute> attributes = attributeRepository.findByUserIdOrderByAttrCodeAsc(user.getId());
-        return UserResponse.from(user, assignments, attributes);
+        return UserResponse.from(user, assignments, attributes, rolesFor(user.getId()));
     }
 
     public static String normalizeUsername(String username) {

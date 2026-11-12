@@ -21,12 +21,14 @@ public record UserResponse(
         Instant createdAt,
         Instant updatedAt,
         List<AssignmentResponse> assignments,
-        List<AttributeValueRequest> attributes) {
+        List<AttributeValueRequest> attributes,
+        List<RoleResponse> roles) {
 
     public static UserResponse from(
             IamUser user,
             List<IamUserAssignment> assignments,
-            List<IamUserAttribute> attributes) {
+            List<IamUserAttribute> attributes,
+            List<RoleResponse> roles) {
         return new UserResponse(
                 user.getId(),
                 user.getUsername(),
@@ -42,7 +44,8 @@ public record UserResponse(
                 assignments.stream().map(AssignmentResponse::from).toList(),
                 attributes.stream()
                         .map(attr -> new AttributeValueRequest(attr.getAttrCode(), attr.getValueText()))
-                        .toList());
+                        .toList(),
+                roles == null ? List.of() : List.copyOf(roles));
     }
 
     public record AssignmentResponse(

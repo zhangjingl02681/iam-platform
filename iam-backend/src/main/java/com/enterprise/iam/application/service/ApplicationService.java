@@ -7,9 +7,11 @@ import com.enterprise.iam.application.web.dto.ApplicationResponse;
 import com.enterprise.iam.application.web.dto.CreateApplicationRequest;
 import com.enterprise.iam.application.web.dto.UpdateApplicationRequest;
 import com.enterprise.iam.audit.AuditService;
+import com.enterprise.iam.common.SecurityUtils;
 import com.enterprise.iam.common.exception.BusinessException;
 import com.enterprise.iam.common.exception.ConflictException;
 import com.enterprise.iam.common.exception.NotFoundException;
+import com.enterprise.iam.policy.service.PdpService;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -30,10 +32,18 @@ public class ApplicationService {
 
     private final IamApplicationRepository applicationRepository;
     private final AuditService auditService;
+    private final ApplicationEntitlementService entitlementService;
+    private final PdpService pdpService;
 
-    public ApplicationService(IamApplicationRepository applicationRepository, AuditService auditService) {
+    public ApplicationService(
+            IamApplicationRepository applicationRepository,
+            AuditService auditService,
+            ApplicationEntitlementService entitlementService,
+            PdpService pdpService) {
         this.applicationRepository = applicationRepository;
         this.auditService = auditService;
+        this.entitlementService = entitlementService;
+        this.pdpService = pdpService;
     }
 
     @Transactional
@@ -85,9 +95,13 @@ public class ApplicationService {
 
     @Transactional(readOnly = true)
     public List<ApplicationResponse> listLaunchableForCurrentUser() {
-        return applicationRepository
-                .findByStatusAndLaunchUrlIsNotNullOrderByNameAsc(ApplicationStatus.ACTIVE)
-                .stream()
+        UUID userId = SecurityUtils.requireUserId();
+        List<IamApplication> applications = applicationRepository
+                .findByStatusAndLaunchUrlIsNotNullOrderByNameAsc(ApplicationStatus.ACTIVE);
+        var visible = entitlementService.visibleApplicationIds(userId, applications);
+        return applications.stream()
+                .filter(application -> visible.contains(application.getId()))
+                .filter(application -> pdpService.permitsLaunch(userId, application))
                 .map(ApplicationResponse::from)
                 .toList();
     }

@@ -44,8 +44,12 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   if (!headers.has("Accept")) {
     headers.set("Accept", "application/json");
   }
-  if (init.body && !headers.has("Content-Type")) {
+  const isFormData = typeof FormData !== "undefined" && init.body instanceof FormData;
+  if (init.body && !isFormData && !headers.has("Content-Type")) {
     headers.set("Content-Type", "application/json");
+  }
+  if (isFormData && headers.has("Content-Type")) {
+    headers.delete("Content-Type");
   }
   if (method !== "GET" && method !== "HEAD") {
     const csrf = await ensureCsrfToken();
@@ -117,6 +121,20 @@ export function statusLabel(status?: string | null): string {
       return "已过期";
     case "PENDING":
       return "待处理";
+    case "RUNNING":
+      return "进行中";
+    case "SUCCEEDED":
+      return "已完成";
+    case "FAILED":
+      return "失败";
+    case "CANCELLED":
+      return "已取消";
+    case "DRAFT":
+      return "草稿";
+    case "PUBLISHED":
+      return "已发布";
+    case "DEPRECATED":
+      return "已停用";
     default:
       return status || "—";
   }

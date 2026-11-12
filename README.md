@@ -2,7 +2,7 @@
 
 面向企业内部员工的身份与访问管理（IAM）。同一进程提供身份 API、OIDC / OAuth 2.0 授权服务器，以及简体中文的登录、门户与管理控制台前端。
 
-当前交付覆盖：数据模型、Flyway 建表、用户 / 组织 / 口令 / 导入任务记录、应用目录、会话与只读审计 API，基于 Spring Authorization Server 的 OIDC（授权码 + PKCE、客户端凭证、发现、UserInfo、刷新令牌轮换、授权许可页），以及 Vite + React 单页应用（登录、强制改密、SSO 门户、自助资料与会话、管理控制台）。
+当前交付覆盖：数据模型、Flyway 建表、用户 / 组织 / 角色 / 口令、CSV 人员导入解析、应用目录与按人/组织/角色授权、ABAC 策略管理与决策点（PDP）、会话与只读审计 API，基于 Spring Authorization Server 的 OIDC（授权码 + PKCE、客户端凭证、发现、UserInfo、刷新令牌轮换、授权许可页），以及 Vite + React 单页应用（登录、强制改密、SSO 门户、自助资料与会话、管理控制台）。
 
 - 运行时：Java 21、Spring Boot **4.1.2**、Spring Data JPA、PostgreSQL 16、Flyway、Spring Security 7.1、Spring Authorization Server（starter：`spring-boot-starter-security-oauth2-authorization-server`）、Actuator
 - 包名：`com.enterprise.iam`
@@ -71,7 +71,7 @@ npm run dev
 | `/`、`/portal` | 登录后的 SSO 门户，展示可启动的应用卡片 |
 | `/password` | 修改口令；若 `mustChangePassword` 为真，会挡住其他页面 |
 | `/profile`、`/sessions` | 个人资料与会话自助（可注销当前/其他会话） |
-| `/admin/**` | 仅 `ROLE_ADMIN`：用户、组织、应用目录、导入任务记录、只读审计、会话管理 |
+| `/admin/**` | 仅 `ROLE_ADMIN`：用户、组织、角色、应用目录与授权、访问策略、CSV 导入、只读审计、会话管理 |
 | `/consent` | OIDC 授权许可页（演示客户端 `iam-demo-consent` 会进入此页） |
 
 生产构建在 `iam-frontend` 模块中完成：Vite 把产物写入该模块 jar 的 `META-INF/resources/`，后端通过 Maven 依赖引入这个 web jar。`./mvnw test` 会按反应器顺序同时运行前端 Vitest 与后端集成测试。
@@ -92,7 +92,7 @@ npm run dev
 | 项 | 值 |
 | --- | --- |
 | 用户名 | `admin` |
-| 默认口令 | `ChangeMe_Admin_Dev_Only!` |
+| 默认口令 | `ChangeMe_Admin_Dev_Only1!` |
 
 可用环境变量覆盖口令：
 
@@ -176,7 +176,7 @@ PY
 http://localhost:8080/oauth2/authorize?response_type=code&client_id=iam-demo-web&redirect_uri=http://localhost:8080/login/oauth2/code/iam-demo-web&scope=openid%20profile%20email&state=xyz&code_challenge=CHALLENGE&code_challenge_method=S256
 ```
 
-3. 在表单登录页使用开发管理员账号登录（默认 `admin` / `ChangeMe_Admin_Dev_Only!`）。
+3. 在表单登录页使用开发管理员账号登录（默认 `admin` / `ChangeMe_Admin_Dev_Only1!`）。
 4. 浏览器会被重定向到回调地址并带上 `code`。本服务不托管该客户端回调页，页面可能显示 404，从地址栏复制 `code` 即可。
 5. 用授权码换令牌，并访问 UserInfo：
 
@@ -203,20 +203,28 @@ curl -u 'iam-demo-web:DevWeb_ClientSecret_Only!' \
 
 ## 身份 API
 
-基础路径：`/api/v1`，JSON。错误体为 RFC 7807 Problem Detail。除健康检查与 OIDC 协议端点外，API 需已认证（浏览器会话 Cookie、HTTP Basic 或 Bearer JWT）。写操作（创建 / 更新用户、组织与应用、重置口令、导入任务、管理员注销会话）需要 `ADMIN` 角色。
+基础路径：`/api/v1`，JSON。错误体为 RFC 7807 Problem Detail。除健康检查与 OIDC 协议端点外，API 需已认证（浏览器会话 Cookie、HTTP Basic 或 Bearer JWT）。写操作（创建 / 更新用户、组织、角色与应用、授权、策略发布、重置口令、导入任务、管理员注销会话）需要 `ADMIN` 角色。
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
 | `POST` | `/api/v1/users` | 创建用户（可选口令、主组织、属性） |
-| `GET` | `/api/v1/users/{id}` | 按 ID 查询 |
+| `GET` | `/api/v1/users/{id}` | 按 ID 查询（含已分配角色） |
 | `GET` | `/api/v1/users?username=&status=` | 搜索 / 分页 |
 | `PATCH` | `/api/v1/users/{id}` | 更新资料或状态（`DISABLED` / `TERMINATED` 等，不物理删除） |
 | `POST` | `/api/v1/users/{id}/assignments` | 分配组织（可设为主组织） |
 | `PUT` | `/api/v1/users/{id}/attributes` | 覆盖设置用户属性 |
 | `POST` | `/api/v1/users/{id}/password` | 管理员设置 / 重置口令 |
+| `GET` | `/api/v1/users/{id}/roles` | 列出用户已分配角色 |
+| `POST` | `/api/v1/users/{id}/roles` | 为用户分配角色 |
+| `DELETE` | `/api/v1/users/{id}/roles/{roleId}` | 移除用户角色（不能移走最后一名管理员的 admin 角色） |
+| `GET` | `/api/v1/roles` | 角色列表（分页） |
+| `POST` | `/api/v1/roles` | 创建角色（code 唯一） |
+| `GET` | `/api/v1/roles/{id}` | 角色详情 |
+| `PATCH` | `/api/v1/roles/{id}` | 更新角色名称、描述或状态 |
+| `DELETE` | `/api/v1/roles/{id}` | 删除角色（内置 admin 角色不可删除） |
 | `GET` | `/api/v1/me` | 当前用户资料、是否必须改密、是否管理员与 authorities |
 | `POST` | `/api/v1/me/password` | 修改自己的口令 |
-| `GET` | `/api/v1/me/applications` | 当前用户可启动的启用应用（已配置 launchUrl） |
+| `GET` | `/api/v1/me/applications` | 当前用户可启动的应用：无授权记录的应用对所有已登录用户可见；有授权时需匹配用户、所属组织或角色。若已有已发布策略作用于该应用的 `app:launch`，还需 PDP 允许 |
 | `GET` | `/api/v1/me/sessions` | 当前用户的会话列表（含当前会话标记） |
 | `DELETE` | `/api/v1/me/sessions/{id}` | 注销自己的一条会话 |
 | `POST` | `/api/v1/me/sessions/revoke-others` | 注销除当前外的其他会话 |
@@ -224,6 +232,18 @@ curl -u 'iam-demo-web:DevWeb_ClientSecret_Only!' \
 | `POST` | `/api/v1/applications` | 创建应用（含启动地址） |
 | `GET` | `/api/v1/applications/{id}` | 应用详情 |
 | `PATCH` | `/api/v1/applications/{id}` | 更新应用 |
+| `GET` | `/api/v1/applications/{id}/entitlements` | 列出应用授权 |
+| `POST` | `/api/v1/applications/{id}/entitlements` | 添加授权（subjectType：USER / ORG / ROLE） |
+| `DELETE` | `/api/v1/applications/{id}/entitlements/{entitlementId}` | 移除授权 |
+| `POST` | `/api/v1/policies` | 创建策略（草稿） |
+| `GET` | `/api/v1/policies` | 策略列表 |
+| `GET` | `/api/v1/policies/{id}` | 策略详情 |
+| `POST` | `/api/v1/policies/{id}/versions` | 新增策略版本（JSON 文档，自动计算 checksum） |
+| `GET` | `/api/v1/policies/{id}/versions` | 列出策略版本 |
+| `POST` | `/api/v1/policies/{id}/versions/{versionId}/publish` | 发布策略版本 |
+| `POST` | `/api/v1/policies/{id}/bindings` | 将已发布版本绑定到应用或组织 |
+| `GET` | `/api/v1/policies/{id}/bindings` | 列出策略绑定 |
+| `POST` | `/api/v1/pdp/decide` | 对当前用户做决策（默认拒绝；拒绝优先于允许；未发布版本不生效） |
 | `GET` | `/api/v1/sessions` | 管理端按用户名/状态查询会话 |
 | `POST` | `/api/v1/sessions/{id}/revoke` | 管理员注销会话 |
 | `GET` | `/api/v1/audit-events` | 只读审计查询（时间、操作者、动作、对象） |
@@ -234,7 +254,7 @@ curl -u 'iam-demo-web:DevWeb_ClientSecret_Only!' \
 | `GET` | `/api/v1/orgs/{id}` | 组织详情 |
 | `GET` | `/api/v1/orgs/{id}/children` | 直接子节点 |
 | `PATCH` | `/api/v1/orgs/{id}` | 更新组织（名称、状态、排序、父节点） |
-| `POST` | `/api/v1/import-jobs` | 记录一条导入任务（本期不解析文件） |
+| `POST` | `/api/v1/import-jobs` | 创建导入任务。JSON 仅含 `fileRef` 时仍只登记为 pending；提供 `csv` 字段或上传 `multipart` CSV 文件时会解析并执行（按 username 创建或更新，不物理删除，不读取 file:// 本地文件） |
 | `GET` | `/api/v1/import-jobs/{id}` | 查询导入任务 |
 | `GET` | `/api/v1/import-jobs` | 分页列出导入任务 |
 | `GET` | `/actuator/health` | 健康检查 |
@@ -243,13 +263,33 @@ curl -u 'iam-demo-web:DevWeb_ClientSecret_Only!' \
 调用示例：
 
 ```bash
-curl -u admin:ChangeMe_Admin_Dev_Only! \
+curl -u admin:ChangeMe_Admin_Dev_Only1! \
   -H 'Content-Type: application/json' \
   -d '{"username":"alice","displayName":"Alice","password":"Alice-Passw0rd!"}' \
   http://localhost:8080/api/v1/users
 ```
 
 口令策略：长度 12–128，至少包含一个字母和一个数字；使用 **Argon2id** 哈希存储，接口响应中不会返回哈希。近期口令不可复用；连续失败达到阈值会锁定账户。
+
+JSON 策略文档形状（内建 PDP，不嵌入 OPA 或 Cedar）：
+
+```json
+{
+  "effect": "allow",
+  "actions": ["app:launch"],
+  "resources": [{ "type": "application", "id": "*", "code": "finance-app" }],
+  "when": {
+    "roles": ["finance"],
+    "orgCodes": ["eng"],
+    "attributes": { "title": "Engineer" }
+  }
+}
+```
+
+`when` 可省略。决策时拒绝优先于允许；没有匹配的已发布并已绑定策略时，`/api/v1/pdp/decide` 默认拒绝。决策始终针对当前登录用户。
+
+CSV 导入列：`username,display_name,email,org_code,status,temporary_password`。按用户名创建或更新；提供临时口令时用户下次登录必须修改；`org_code` 不存在则该行失败。响应与错误报告中不会出现明文口令。
+
 
 ## 模块结构
 
@@ -281,8 +321,8 @@ com.enterprise.iam
   identity      用户、组织、凭证、角色、导入任务
   auth          HTTP Basic / 表单登录 / UserDetails
   session       会话、授权码与刷新令牌持久化
-  application   应用目录、启动地址与 OAuth 客户端
-  policy        ABAC 策略实体
+  application   应用目录、启动地址、授权与 OAuth 客户端
+  policy        ABAC 策略管理、绑定与 PDP 决策
   audit         只追加的审计服务与只读查询
   web           前端 SPA 回退与 CSRF 辅助接口
   pam           PAM 预留表与实体（无业务 API）
@@ -290,7 +330,7 @@ com.enterprise.iam
   common        异常与 Problem Detail
 ```
 
-数据库迁移：`iam-backend/src/main/resources/db/migration/V1__init_schema.sql`、`V2__oidc_authorization.sql`、`V3__application_launch_url.sql`。应用使用 `ddl-auto=validate`，表结构由 Flyway 管理。授权码、刷新令牌与客户端密钥只存哈希，不存明文。
+数据库迁移：`iam-backend/src/main/resources/db/migration/V1__init_schema.sql`、`V2__oidc_authorization.sql`、`V3__application_launch_url.sql`、`V4__application_entitlement.sql`。应用使用 `ddl-auto=validate`，表结构由 Flyway 管理。授权码、刷新令牌与客户端密钥只存哈希，不存明文。
 
 ## 构建与测试
 
@@ -299,7 +339,7 @@ com.enterprise.iam
 ./mvnw package
 ```
 
-在仓库根目录执行即可构建整个反应器。`./mvnw test` 会先构建并测试 `iam-frontend`（Vitest），再运行 `iam-backend` 的 Surefire 集成测试。测试会启动嵌入式 PostgreSQL 16（Zonky），执行 Flyway，并覆盖：用户创建与用户名唯一约束、口令不为明文且为 Argon2id、审计行写入、组织与改密、禁用后无法登录、导入任务记录；应用目录与门户应用列表、会话自助与管理员注销、只读审计过滤、表单登录会话调用 API、登录错误分类与 CSRF；前端 web jar 中的 `META-INF/resources/index.html` 作为登录页与 SPA 回退；以及 OIDC 发现文档、授权码 + PKCE（`sub` 为用户 UUID、UserInfo）、需要许可的授权码流程、客户端凭证、刷新令牌轮换与重放拒绝、健康检查与 HTTP Basic 管理 API 仍可用。
+在仓库根目录执行即可构建整个反应器。`./mvnw test` 会先构建并测试 `iam-frontend`（Vitest），再运行 `iam-backend` 的 Surefire 集成测试。测试会启动嵌入式 PostgreSQL 16（Zonky），执行 Flyway，并覆盖：用户创建与用户名唯一约束、口令不为明文且为 Argon2id、审计行写入、组织与改密、禁用后无法登录、CSV 导入创建/更新与失败行报告；角色 CRUD 与分配；应用目录、门户应用列表与按用户/组织/角色授权；ABAC 策略发布、绑定、默认拒绝与拒绝覆盖允许；会话自助与管理员注销、只读审计过滤、表单登录会话调用 API、登录错误分类与 CSRF；前端 web jar 中的 `META-INF/resources/index.html` 作为登录页与 SPA 回退；以及 OIDC 发现文档、授权码 + PKCE（`sub` 为用户 UUID、UserInfo）、需要许可的授权码流程、客户端凭证、刷新令牌轮换与重放拒绝、健康检查与 HTTP Basic 管理 API 仍可用。
 
 只打包、跳过测试：
 
@@ -313,7 +353,8 @@ com.enterprise.iam
 
 - 项目骨架（Boot 4.1.2 starter、Wrapper、Compose、配置）
 - 设计中的全部表与 JPA 实体（含 PAM 预留）
-- 用户 / 组织 / 口令 / 导入任务记录 / 应用目录 / 会话 / 只读审计 API
+- 用户 / 组织 / 角色 / 口令 / CSV 人员导入解析 / 应用目录与授权 / 会话 / 只读审计 API
+- ABAC 策略管理（创建、版本、发布、绑定）与 `/api/v1/pdp/decide` 决策点
 - 简体中文门户与管理控制台前端（随 Spring Boot 一同提供）
 - Argon2id、审计追加、HTTP Basic 与表单登录、开发环境管理员引导
 - OIDC / OAuth 2.0 授权服务器：发现、授权码 + PKCE、客户端凭证、ID Token / UserInfo、撤销与探视、RP 登出、刷新令牌轮换与重放吊销、JPA 持久化与开发客户端引导
@@ -322,8 +363,7 @@ com.enterprise.iam
 
 - 完整的 SSO 门户与正式同意（consent）界面打磨
 - MFA 校验
-- 会话签发与吊销的独立管理 API、Redis 热会话
-- ABAC 策略决策点（PDP）与策略管理 API
+- Redis 热会话
 - PAM 申请 / 签出 / 录像等业务 API
-- 完整的人员批量导入解析、细粒度操作审计检索 API
+- 更细粒度的操作审计检索 API
 - 生产级密钥保险库与密钥轮换（签名密钥不得进入业务库，仅保存 `vault_ref` 或从保险库加载）
