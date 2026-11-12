@@ -1,0 +1,17 @@
+# Dev profile only. Do not use these secrets in production.
+iam:
+  oidc:
+    issuer: http://localhost:8080
+  bootstrap:
+    admin:
+      enabled: true
+      username: admin
+      # Override in the environment: IAM_BOOTSTRAP_ADMIN_PASSWORD
+      password: ${IAM_BOOTSTRAP_ADMIN_PASSWORD:ChangeMe_Admin_Dev_Only!}
+      display-name: 系统管理员
+    clients:
+      enabled: true
+      # Override: IAM_DEMO_WEB_SECRET / IAM_DEMO_API_SECRET
+      web-secret: ${IAM_DEMO_WEB_SECRET:DevWeb_ClientSecret_Only!}
+      api-secret: ${IAM_DEMO_API_SECRET:DevApi_ClientSecret_Only!}
+      consent-secret: ${IAM_DEMO_CONSENT_SECRET:DevConsent_ClientSecret_Only!}

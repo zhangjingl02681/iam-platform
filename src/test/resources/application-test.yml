@@ -1,0 +1,15 @@
+iam:
+  oidc:
+    issuer: http://localhost:8080
+    jwk-location: ${java.io.tmpdir}/iam-platform-test-jwk.json
+  bootstrap:
+    admin:
+      enabled: true
+      username: admin
+      password: test-Admin-Passw0rd!
+      display-name: Test Admin
+    clients:
+      enabled: true
+      web-secret: DevWeb_ClientSecret_Only!
+      api-secret: DevApi_ClientSecret_Only!
+      consent-secret: DevConsent_ClientSecret_Only!
