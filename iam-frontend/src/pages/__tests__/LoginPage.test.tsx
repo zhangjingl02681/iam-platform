@@ -52,4 +52,15 @@ describe("LoginPage", () => {
     await user.click(screen.getByLabelText("记住用户名"));
     expect(localStorage.getItem("iam.rememberedUsername")).toBe("alice");
   });
+
+  it("shows a second-step MFA form without revealing whether the username exists", () => {
+    renderLogin("?mfa=required&error=mfa_invalid");
+    expect(screen.getByRole("heading", { name: /双因素验证/ })).toBeInTheDocument();
+    const form = document.querySelector("form");
+    expect(form).toHaveAttribute("action", "/login/mfa");
+    expect(screen.getByLabelText("验证码")).toHaveAttribute("name", "code");
+    expect(screen.getByRole("button", { name: "验证并登录" })).toBeInTheDocument();
+    expect(screen.getByRole("alert")).toHaveTextContent("验证码不正确或已过期");
+    expect(screen.queryByLabelText("用户名")).not.toBeInTheDocument();
+  });
 });

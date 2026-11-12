@@ -168,3 +168,86 @@ export interface PolicyVersion {
   comment?: string | null;
   createdAt?: string;
 }
+
+export interface MfaFactor {
+  id: string;
+  type: string;
+  label?: string | null;
+  verifiedAt?: string | null;
+  createdAt?: string;
+  disabledAt?: string | null;
+}
+
+export interface MfaEnrollment {
+  id: string;
+  type: string;
+  label?: string | null;
+  verifiedAt?: string | null;
+  secret: string;
+  otpauthUri: string;
+}
+
+export interface MfaConfirmResult {
+  factor: MfaFactor;
+  recoveryCodes: string[];
+}
+
+export interface PamTarget {
+  id: string;
+  type: string;
+  name: string;
+  address?: string | null;
+  env?: string | null;
+  status: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface PamAccount {
+  id: string;
+  targetId: string;
+  username: string;
+  vaultRef?: string | null;
+  status: string;
+  createdAt?: string;
+}
+
+export interface PamRequestItem {
+  id: string;
+  accountId: string;
+  requesterId: string;
+  reason?: string | null;
+  startAt: string;
+  endAt: string;
+  status: string;
+  approverId?: string | null;
+  decidedAt?: string | null;
+  createdAt?: string;
+}
+
+export interface PamCheckout {
+  id: string;
+  requestId: string;
+  accountId: string;
+  userId: string;
+  checkedOutAt: string;
+  expiresAt: string;
+  checkedInAt?: string | null;
+  status: string;
+}
+
+export interface PamSecret {
+  checkoutId: string;
+  requestId: string;
+  username: string;
+  secret: string;
+  expiresAt: string;
+}
+
+export interface SigningKey {
+  kid: string;
+  status: string;
+  createdAt: string;
+  validUntil?: string | null;
+  retiredAt?: string | null;
+}

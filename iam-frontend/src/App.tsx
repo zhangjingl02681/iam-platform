@@ -11,12 +11,15 @@ import { AdminImportJobs } from "./pages/admin/AdminImportJobs";
 import { AdminOrgs } from "./pages/admin/AdminOrgs";
 import { AdminPolicies } from "./pages/admin/AdminPolicies";
 import { AdminRoles } from "./pages/admin/AdminRoles";
+import { AdminPam } from "./pages/admin/AdminPam";
 import { AdminSessions } from "./pages/admin/AdminSessions";
+import { AdminSigningKeys } from "./pages/admin/AdminSigningKeys";
 import { AdminUserEditor, AdminUsers } from "./pages/admin/AdminUsers";
 import { ConsentPage } from "./pages/ConsentPage";
 import { DirectoryPage, HandbookPage } from "./pages/ExamplesPages";
 import { LoginPage } from "./pages/LoginPage";
 import { PasswordPage } from "./pages/PasswordPage";
+import { PamPage } from "./pages/PamPage";
 import { PortalPage } from "./pages/PortalPage";
 import { ProfilePage } from "./pages/ProfilePage";
 import { SessionsPage } from "./pages/SessionsPage";
@@ -121,6 +124,7 @@ export function App() {
           element={<PortalPage me={me} applications={apps} loading={appsLoading} error={appsError} />}
         />
         <Route path="/profile" element={<ProfilePage me={me} />} />
+        <Route path="/pam" element={<PamPage />} />
         <Route
           path="/sessions"
           element={
@@ -163,6 +167,8 @@ export function App() {
         <Route path="import-jobs" element={<AdminImportJobs />} />
         <Route path="audit" element={<AdminAudit />} />
         <Route path="sessions" element={<AdminSessions />} />
+        <Route path="pam" element={<AdminPam />} />
+        <Route path="signing-keys" element={<AdminSigningKeys />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

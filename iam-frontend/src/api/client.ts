@@ -135,6 +135,18 @@ export function statusLabel(status?: string | null): string {
       return "已发布";
     case "DEPRECATED":
       return "已停用";
+    case "APPROVED":
+      return "已批准";
+    case "REJECTED":
+      return "已拒绝";
+    case "CHECKED_IN":
+      return "已签入";
+    case "CURRENT":
+      return "当前";
+    case "PREVIOUS":
+      return "上一把";
+    case "RETIRED":
+      return "已退役";
     default:
       return status || "—";
   }

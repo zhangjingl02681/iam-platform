@@ -9,6 +9,9 @@ public class IamProperties {
     private final Security security = new Security();
     private final Bootstrap bootstrap = new Bootstrap();
     private final Oidc oidc = new Oidc();
+    private final Vault vault = new Vault();
+    private final Mfa mfa = new Mfa();
+    private final Pam pam = new Pam();
 
     public Security getSecurity() {
         return security;
@@ -20,6 +23,18 @@ public class IamProperties {
 
     public Oidc getOidc() {
         return oidc;
+    }
+
+    public Vault getVault() {
+        return vault;
+    }
+
+    public Mfa getMfa() {
+        return mfa;
+    }
+
+    public Pam getPam() {
+        return pam;
     }
 
     public static class Security {
@@ -113,6 +128,7 @@ public class IamProperties {
         private Duration idTokenTtl = Duration.ofMinutes(15);
         private Duration sessionIdleTimeout = Duration.ofMinutes(30);
         private Duration sessionAbsoluteTimeout = Duration.ofHours(8);
+        private Duration signingKeyGrace = Duration.ofDays(7);
 
         public String getIssuer() {
             return issuer;
@@ -176,6 +192,81 @@ public class IamProperties {
 
         public void setSessionAbsoluteTimeout(Duration sessionAbsoluteTimeout) {
             this.sessionAbsoluteTimeout = sessionAbsoluteTimeout;
+        }
+
+        public Duration getSigningKeyGrace() {
+            return signingKeyGrace;
+        }
+
+        public void setSigningKeyGrace(Duration signingKeyGrace) {
+            this.signingKeyGrace = signingKeyGrace;
+        }
+    }
+
+    public static class Vault {
+        /**
+         * {@code file} uses a gitignored local directory (development). {@code reserved}
+         * is the production interface placeholder and does not call a cloud KMS.
+         */
+        private String type = "file";
+        private String directory = ".data/vault";
+
+        public String getType() {
+            return type;
+        }
+
+        public void setType(String type) {
+            this.type = type;
+        }
+
+        public String getDirectory() {
+            return directory;
+        }
+
+        public void setDirectory(String directory) {
+            this.directory = directory;
+        }
+    }
+
+    public static class Mfa {
+        private String issuer = "Enterprise IAM";
+        private Duration pendingTtl = Duration.ofMinutes(5);
+        private int recoveryCodeCount = 10;
+
+        public String getIssuer() {
+            return issuer;
+        }
+
+        public void setIssuer(String issuer) {
+            this.issuer = issuer;
+        }
+
+        public Duration getPendingTtl() {
+            return pendingTtl;
+        }
+
+        public void setPendingTtl(Duration pendingTtl) {
+            this.pendingTtl = pendingTtl;
+        }
+
+        public int getRecoveryCodeCount() {
+            return recoveryCodeCount;
+        }
+
+        public void setRecoveryCodeCount(int recoveryCodeCount) {
+            this.recoveryCodeCount = recoveryCodeCount;
+        }
+    }
+
+    public static class Pam {
+        private Duration checkoutTtl = Duration.ofMinutes(30);
+
+        public Duration getCheckoutTtl() {
+            return checkoutTtl;
+        }
+
+        public void setCheckoutTtl(Duration checkoutTtl) {
+            this.checkoutTtl = checkoutTtl;
         }
     }
 

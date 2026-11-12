@@ -28,6 +28,8 @@ export function AdminLayout({ me, children }: { me: Me; children?: React.ReactNo
         <NavLink to="/admin/applications">应用目录</NavLink>
         <NavLink to="/admin/policies">访问策略</NavLink>
         <NavLink to="/admin/sessions">会话</NavLink>
+        <NavLink to="/admin/pam">特权访问</NavLink>
+        <NavLink to="/admin/signing-keys">签名密钥</NavLink>
         <div className="group">治理</div>
         <NavLink to="/admin/import-jobs">导入任务</NavLink>
         <NavLink to="/admin/audit">审计事件</NavLink>

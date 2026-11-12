@@ -20,19 +20,23 @@ public class IamSessionValidationFilter extends OncePerRequestFilter {
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
             throws ServletException, IOException {
-        loginSessionService.currentSessionId(request).ifPresent(sessionId -> {
-            if (!loginSessionService.isActive(sessionId)) {
-                SecurityContextHolder.clearContext();
-                HttpSession httpSession = request.getSession(false);
-                if (httpSession != null) {
-                    try {
-                        httpSession.invalidate();
-                    } catch (IllegalStateException ignored) {
-                        // already invalidated
+        try {
+            loginSessionService.currentSessionId(request).ifPresent(sessionId -> {
+                if (!loginSessionService.isActive(sessionId)) {
+                    SecurityContextHolder.clearContext();
+                    HttpSession httpSession = request.getSession(false);
+                    if (httpSession != null) {
+                        try {
+                            httpSession.invalidate();
+                        } catch (IllegalStateException ignored) {
+                            // already invalidated
+                        }
                     }
                 }
-            }
-        });
+            });
+        } catch (IllegalStateException ignored) {
+            SecurityContextHolder.clearContext();
+        }
         filterChain.doFilter(request, response);
     }
 }

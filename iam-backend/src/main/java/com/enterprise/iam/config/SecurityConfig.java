@@ -24,6 +24,8 @@ import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
 import org.springframework.security.web.csrf.CsrfFilter;
 import org.springframework.security.web.csrf.CsrfTokenRequestAttributeHandler;
 import org.springframework.security.web.context.SecurityContextHolderFilter;
+import org.springframework.security.web.context.SecurityContextRepository;
+import org.springframework.security.web.context.HttpSessionSecurityContextRepository;
 import org.springframework.security.web.session.HttpSessionEventPublisher;
 
 @Configuration
@@ -41,16 +43,23 @@ public class SecurityConfig {
     }
 
     @Bean
+    public SecurityContextRepository securityContextRepository() {
+        return new HttpSessionSecurityContextRepository();
+    }
+
+    @Bean
     @Order(2)
     public SecurityFilterChain securityFilterChain(
             HttpSecurity http,
             FormLoginSuccessHandler formLoginSuccessHandler,
             FormLoginFailureHandler formLoginFailureHandler,
             IamSessionLogoutHandler sessionLogoutHandler,
-            IamLoginSessionService loginSessionService)
+            IamLoginSessionService loginSessionService,
+            SecurityContextRepository securityContextRepository)
             throws Exception {
         CsrfTokenRequestAttributeHandler csrfHandler = new CsrfTokenRequestAttributeHandler();
         http
+                .securityContext(context -> context.securityContextRepository(securityContextRepository))
                 .csrf(csrf -> csrf
                         .csrfTokenRequestHandler(csrfHandler)
                         .csrfTokenRepository(CookieCsrfTokenRepository.withHttpOnlyFalse())
@@ -76,6 +85,7 @@ public class SecurityConfig {
                                 "/actuator/health/**",
                                 "/actuator/info",
                                 "/login",
+                                "/login/mfa",
                                 "/csrf",
                                 "/error",
                                 "/index.html",

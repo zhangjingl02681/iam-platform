@@ -7,12 +7,14 @@ const ERRORS: Record<string, string> = {
   bad_credentials: "用户名或密码不正确。请检查后重试。",
   locked: "账号已锁定，请稍后再试或联系管理员解锁。",
   disabled: "账号已停用，如需恢复请联系管理员。",
+  mfa_invalid: "验证码不正确或已过期，请重试。",
 };
 
 export function LoginPage() {
   const [params] = useSearchParams();
   const errorCode = params.get("error") || "";
   const loggedOut = params.has("logout");
+  const mfaRequired = params.get("mfa") === "required";
   const remembered = useMemo(() => rememberedUsername() || "", []);
   const [username, setUsername] = useState(remembered);
   const [remember, setRemember] = useState(Boolean(remembered));
@@ -65,14 +67,34 @@ export function LoginPage() {
       </aside>
       <main className="auth-main">
         <div className="panel">
-          <h1>登录</h1>
-          <p className="hint">请输入您的用户名和密码。</p>
+          <h1>{mfaRequired ? "双因素验证" : "登录"}</h1>
+          <p className="hint">{mfaRequired ? "请输入身份验证器中的 6 位验证码，或一次性恢复码。" : "请输入您的用户名和密码。"}</p>
           {loggedOut ? <div className="alert ok">您已安全退出。</div> : null}
           {message ? (
             <div className="alert error" role="alert">
               {message}
             </div>
           ) : null}
+          {mfaRequired ? (
+            <form method="post" action="/login/mfa" acceptCharset="UTF-8" onSubmit={onSubmit}>
+              <input type="hidden" name="_csrf" value={csrf} />
+              <label className="field" htmlFor="code">
+                验证码
+                <input
+                  id="code"
+                  name="code"
+                  autoComplete="one-time-code"
+                  inputMode="numeric"
+                  autoFocus
+                  required
+                />
+              </label>
+              <button type="submit" className="btn full-width">
+                验证并登录
+              </button>
+              <p className="hint">验证码不正确时不会透露账号是否存在。</p>
+            </form>
+          ) : (
           <form method="post" action="/login" acceptCharset="UTF-8" onSubmit={onSubmit}>
             <input type="hidden" name="_csrf" value={csrf} />
             <label className="field" htmlFor="username">
@@ -100,6 +122,7 @@ export function LoginPage() {
               登录
             </button>
           </form>
+          )}
         </div>
       </main>
     </div>

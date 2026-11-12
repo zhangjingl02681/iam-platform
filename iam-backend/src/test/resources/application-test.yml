@@ -2,6 +2,7 @@ iam:
   oidc:
     issuer: http://localhost:8080
     jwk-location: ${java.io.tmpdir}/iam-platform-test-jwk.json
+    signing-key-grace: P7D
   bootstrap:
     admin:
       enabled: true
@@ -13,3 +14,12 @@ iam:
       web-secret: DevWeb_ClientSecret_Only!
       api-secret: DevApi_ClientSecret_Only!
       consent-secret: DevConsent_ClientSecret_Only!
+
+  vault:
+    type: file
+    directory: ${java.io.tmpdir}/iam-platform-test-vault
+  mfa:
+    issuer: Enterprise IAM
+    pending-ttl: PT5M
+  pam:
+    checkout-ttl: PT30M

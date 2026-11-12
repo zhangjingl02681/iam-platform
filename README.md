@@ -2,7 +2,7 @@
 
 面向企业内部员工的身份与访问管理（IAM）。同一进程提供身份 API、OIDC / OAuth 2.0 授权服务器，以及简体中文的登录、门户与管理控制台前端。
 
-当前交付覆盖：数据模型、Flyway 建表、用户 / 组织 / 角色 / 口令、CSV 人员导入解析、应用目录与按人/组织/角色授权、ABAC 策略管理与决策点（PDP）、会话与只读审计 API，基于 Spring Authorization Server 的 OIDC（授权码 + PKCE、客户端凭证、发现、UserInfo、刷新令牌轮换、授权许可页），以及 Vite + React 单页应用（登录、强制改密、SSO 门户、自助资料与会话、管理控制台）。
+当前交付覆盖：数据模型、Flyway 建表、用户 / 组织 / 角色 / 口令、CSV 人员导入解析、应用目录与按人/组织/角色授权、ABAC 策略管理与决策点（PDP）、会话与只读审计 API、TOTP 双因素认证、PAM 申请与凭据签出、签名密钥本地保险库与轮换，基于 Spring Authorization Server 的 OIDC（授权码 + PKCE、客户端凭证、发现、UserInfo、刷新令牌轮换、授权许可页），以及 Vite + React 单页应用（登录与 MFA 第二步、强制改密、SSO 门户、自助资料 / 会话 / 特权访问、管理控制台）。
 
 - 运行时：Java 21、Spring Boot **4.1.2**、Spring Data JPA、PostgreSQL 16、Flyway、Spring Security 7.1、Spring Authorization Server（starter：`spring-boot-starter-security-oauth2-authorization-server`）、Actuator
 - 包名：`com.enterprise.iam`
@@ -67,11 +67,12 @@ npm run dev
 
 | 路径 | 说明 |
 | --- | --- |
-| `/login` | 表单登录，提交到 Spring Security `/login`，供门户与 `/oauth2/authorize` 共用 |
+| `/login` | 表单登录，提交到 Spring Security `/login`，供门户与 `/oauth2/authorize` 共用。若账号已启用 TOTP，密码校验通过后进入第二步，提交到 `/login/mfa` |
 | `/`、`/portal` | 登录后的 SSO 门户，展示可启动的应用卡片 |
 | `/password` | 修改口令；若 `mustChangePassword` 为真，会挡住其他页面 |
-| `/profile`、`/sessions` | 个人资料与会话自助（可注销当前/其他会话） |
-| `/admin/**` | 仅 `ROLE_ADMIN`：用户、组织、角色、应用目录与授权、访问策略、CSV 导入、只读审计、会话管理 |
+| `/profile`、`/sessions` | 个人资料（含 TOTP 登记）、会话自助（可立即注销当前/其他会话） |
+| `/pam` | 特权访问自助：提交申请、审批后签出凭据、提前签入 |
+| `/admin/**` | 仅 `ROLE_ADMIN`：用户、组织、角色、应用目录与授权、访问策略、CSV 导入、只读审计、会话管理、PAM 目标/账号与审批、签名密钥轮换 |
 | `/consent` | OIDC 授权许可页（演示客户端 `iam-demo-consent` 会进入此页） |
 
 生产构建在 `iam-frontend` 模块中完成：Vite 把产物写入该模块 jar 的 `META-INF/resources/`，后端通过 Maven 依赖引入这个 web jar。`./mvnw test` 会按反应器顺序同时运行前端 Vitest 与后端集成测试。
@@ -126,7 +127,7 @@ curl http://localhost:8080/.well-known/openid-configuration
 
 `/api/v1/**` 仍以 HTTP Basic 为主（也可附带 Bearer JWT）。`/actuator/health` 与 `/actuator/info` 保持匿名可访问。
 
-开发签名密钥：首次启动时在 `.data/dev-signing-jwk.json` 生成 RSA JWK（该目录已 gitignore）。生产环境应从密钥保险库加载，不要使用该文件，也不要把签名私钥写入业务库。
+开发签名密钥：保存在 gitignore 的本地保险库目录 `.data/vault/`（`iam.vault.type=file`）。若该目录尚无密钥且存在遗留的 `.data/dev-signing-jwk.json`，启动时会导入后再用保险库管理。管理员可在控制台轮换密钥：JWKS 同时发布当前与上一把公钥，新令牌用新密钥签发，上一把在宽限期（默认 7 天，`iam.oidc.signing-key-grace`）或显式退役前仍可用于校验。私钥不进入业务库或 API 响应。生产环境应把 `iam.vault.type` 换成真正的 HSM / 云 KMS 适配器（本增量仅预留接口，不接入外部 KMS）。
 
 ### 开发环境演示客户端
 
@@ -203,7 +204,7 @@ curl -u 'iam-demo-web:DevWeb_ClientSecret_Only!' \
 
 ## 身份 API
 
-基础路径：`/api/v1`，JSON。错误体为 RFC 7807 Problem Detail。除健康检查与 OIDC 协议端点外，API 需已认证（浏览器会话 Cookie、HTTP Basic 或 Bearer JWT）。写操作（创建 / 更新用户、组织、角色与应用、授权、策略发布、重置口令、导入任务、管理员注销会话）需要 `ADMIN` 角色。
+基础路径：`/api/v1`，JSON。错误体为 RFC 7807 Problem Detail。除健康检查与 OIDC 协议端点外，API 需已认证（浏览器会话 Cookie、HTTP Basic 或 Bearer JWT）。写操作（创建 / 更新用户、组织、角色与应用、授权、策略发布、重置口令、导入任务、管理员注销会话、PAM 目标/账号与审批、签名密钥轮换）需要 `ADMIN` 角色。HTTP Basic 管理 API 在本增量中不强制第二因素；浏览器表单登录在账号已验证 TOTP 时必须完成 `/login/mfa` 才会建立会话。
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
@@ -257,6 +258,27 @@ curl -u 'iam-demo-web:DevWeb_ClientSecret_Only!' \
 | `POST` | `/api/v1/import-jobs` | 创建导入任务。JSON 仅含 `fileRef` 时仍只登记为 pending；提供 `csv` 字段或上传 `multipart` CSV 文件时会解析并执行（按 username 创建或更新，不物理删除，不读取 file:// 本地文件） |
 | `GET` | `/api/v1/import-jobs/{id}` | 查询导入任务 |
 | `GET` | `/api/v1/import-jobs` | 分页列出导入任务 |
+| `POST` | `/api/v1/me/mfa/totp/enrollments` | 开始登记 TOTP（一次性返回 secret 与 otpauth URI；密钥写入本地保险库） |
+| `POST` | `/api/v1/me/mfa/totp/enrollments/{id}/confirm` | 用当前 TOTP 确认登记，并一次性返回恢复码 |
+| `GET` | `/api/v1/me/mfa/factors` | 列出自己的 MFA 因子（不含密钥） |
+| `POST` | `/api/v1/me/mfa/factors/{id}/disable` | 停用自己的 MFA 因子 |
+| `GET` | `/api/v1/users/{id}/mfa/factors` | 管理员查看用户 MFA 因子元数据（不含密钥） |
+| `POST` | `/api/v1/users/{id}/mfa/factors/{factorId}/disable` | 管理员停用用户的 MFA 因子 |
+| `POST` | `/login/mfa` | 表单登录第二步（TOTP 或一次性恢复码）。受 CSRF 保护，需先完成密码校验 |
+| `POST` | `/api/v1/pam/targets` | 管理员登记 PAM 目标 |
+| `GET` | `/api/v1/pam/targets` | 列出 PAM 目标 |
+| `POST` | `/api/v1/pam/targets/{id}/accounts` | 管理员登记目标账号（密钥只写入保险库，库中仅存 vault_ref） |
+| `GET` | `/api/v1/pam/targets/{id}/accounts` | 列出目标账号（不含密钥） |
+| `POST` | `/api/v1/pam/requests` | 提交 PAM 申请（账号、原因、时间窗口） |
+| `GET` | `/api/v1/pam/requests` | 列出申请（普通用户仅自己的，管理员可看全部） |
+| `POST` | `/api/v1/pam/requests/{id}/approve` | 管理员批准申请 |
+| `POST` | `/api/v1/pam/requests/{id}/deny` | 管理员拒绝申请 |
+| `POST` | `/api/v1/pam/requests/{id}/checkout` | 在批准窗口内签出凭据（密钥仅此次返回） |
+| `GET` | `/api/v1/pam/checkouts` | 列出签出记录（不含密钥） |
+| `POST` | `/api/v1/pam/checkouts/{id}/check-in` | 提前签入 / 作废一次签出 |
+| `GET` | `/api/v1/signing-keys` | 管理员列出签名密钥元数据（kid、状态、时间，无私钥） |
+| `POST` | `/api/v1/signing-keys/rotate` | 管理员轮换签名密钥 |
+| `POST` | `/api/v1/signing-keys/{kid}/retire` | 管理员退役上一把密钥（不能退役当前密钥） |
 | `GET` | `/actuator/health` | 健康检查 |
 | `GET` | `/actuator/info` | 应用信息 |
 
@@ -325,12 +347,13 @@ com.enterprise.iam
   policy        ABAC 策略管理、绑定与 PDP 决策
   audit         只追加的审计服务与只读查询
   web           前端 SPA 回退与 CSRF 辅助接口
-  pam           PAM 预留表与实体（无业务 API）
-  oidc          Spring Authorization Server 配置与 JPA 适配
+  pam           PAM 目标 / 账号 / 申请 / 签出 API（密钥仅存保险库）
+  oidc          Spring Authorization Server 配置、JPA 适配与签名密钥轮换
+  vault         本地文件保险库（开发）与预留的远程保险库接口
   common        异常与 Problem Detail
 ```
 
-数据库迁移：`iam-backend/src/main/resources/db/migration/V1__init_schema.sql`、`V2__oidc_authorization.sql`、`V3__application_launch_url.sql`、`V4__application_entitlement.sql`。应用使用 `ddl-auto=validate`，表结构由 Flyway 管理。授权码、刷新令牌与客户端密钥只存哈希，不存明文。
+数据库迁移：`iam-backend/src/main/resources/db/migration/V1__init_schema.sql`、`V2__oidc_authorization.sql`、`V3__application_launch_url.sql`、`V4__application_entitlement.sql`、`V5__mfa_pam_signing.sql`。应用使用 `ddl-auto=validate`，表结构由 Flyway 管理。授权码、刷新令牌、客户端密钥与 MFA 恢复码只存哈希，不存明文。签名私钥、PAM 账号密钥与 TOTP 种子只写入本地保险库，业务表仅保存 `vault_ref`。
 
 ## 构建与测试
 
@@ -339,7 +362,7 @@ com.enterprise.iam
 ./mvnw package
 ```
 
-在仓库根目录执行即可构建整个反应器。`./mvnw test` 会先构建并测试 `iam-frontend`（Vitest），再运行 `iam-backend` 的 Surefire 集成测试。测试会启动嵌入式 PostgreSQL 16（Zonky），执行 Flyway，并覆盖：用户创建与用户名唯一约束、口令不为明文且为 Argon2id、审计行写入、组织与改密、禁用后无法登录、CSV 导入创建/更新与失败行报告；角色 CRUD 与分配；应用目录、门户应用列表与按用户/组织/角色授权；ABAC 策略发布、绑定、默认拒绝与拒绝覆盖允许；会话自助与管理员注销、只读审计过滤、表单登录会话调用 API、登录错误分类与 CSRF；前端 web jar 中的 `META-INF/resources/index.html` 作为登录页与 SPA 回退；以及 OIDC 发现文档、授权码 + PKCE（`sub` 为用户 UUID、UserInfo）、需要许可的授权码流程、客户端凭证、刷新令牌轮换与重放拒绝、健康检查与 HTTP Basic 管理 API 仍可用。
+在仓库根目录执行即可构建整个反应器。`./mvnw test` 会先构建并测试 `iam-frontend`（Vitest），再运行 `iam-backend` 的 Surefire 集成测试。测试会启动嵌入式 PostgreSQL 16（Zonky），执行 Flyway，并覆盖：用户创建与用户名唯一约束、口令不为明文且为 Argon2id、审计行写入、组织与改密、禁用后无法登录、CSV 导入创建/更新与失败行报告；角色 CRUD 与分配；应用目录、门户应用列表与按用户/组织/角色授权；ABAC 策略发布、绑定、默认拒绝与拒绝覆盖允许；会话自助与管理员注销（撤销后该会话的后续 HTTP 请求立即失败，用户其他会话仍可用）、只读审计过滤、表单登录会话调用 API、登录错误分类与 CSRF；TOTP 登记与校验、无第二因素时登录被阻止、恢复码一次性使用、停用因子；PAM 申请/批准/拒绝/签出（密钥不落业务库）、过期与越权；签名密钥轮换、JWKS 同时包含新旧 kid、退役后旧令牌失效且 API 不返回私钥；前端 web jar 中的 `META-INF/resources/index.html` 作为登录页与 SPA 回退；以及 OIDC 发现文档、授权码 + PKCE（`sub` 为用户 UUID、UserInfo）、需要许可的授权码流程、客户端凭证、刷新令牌轮换与重放拒绝、健康检查与 HTTP Basic 管理 API 仍可用。
 
 只打包、跳过测试：
 
@@ -352,18 +375,22 @@ com.enterprise.iam
 **已包含**
 
 - 项目骨架（Boot 4.1.2 starter、Wrapper、Compose、配置）
-- 设计中的全部表与 JPA 实体（含 PAM 预留）
+- 设计中的全部表与 JPA 实体，以及 MFA 挑战/恢复码、签名密钥元数据的增量迁移
 - 用户 / 组织 / 角色 / 口令 / CSV 人员导入解析 / 应用目录与授权 / 会话 / 只读审计 API
+- TOTP 双因素认证：登记、确认、恢复码、登录第二步、自助与管理员停用
+- PAM 第一期业务：目标与账号登记、申请、批准/拒绝、限时签出与提前签入（会话录像仅业务记录，无视频）
+- 进程内会话登记：撤销或“注销其他会话”后，该登录会话的后续 HTTP 请求立即被拒绝（不依赖 Redis）
+- 开发级本地保险库与签名密钥轮换（JWKS 同时发布当前与上一把，可显式退役）
 - ABAC 策略管理（创建、版本、发布、绑定）与 `/api/v1/pdp/decide` 决策点
 - 简体中文门户与管理控制台前端（随 Spring Boot 一同提供）
 - Argon2id、审计追加、HTTP Basic 与表单登录、开发环境管理员引导
 - OIDC / OAuth 2.0 授权服务器：发现、授权码 + PKCE、客户端凭证、ID Token / UserInfo、撤销与探视、RP 登出、刷新令牌轮换与重放吊销、JPA 持久化与开发客户端引导
 
-**明确不做（后续迭代）**
+**明确不做 / 仍需外部基础设施的后续工作**
 
 - 完整的 SSO 门户与正式同意（consent）界面打磨
-- MFA 校验
-- Redis 热会话
-- PAM 申请 / 签出 / 录像等业务 API
+- Redis / 集群热会话（多实例之间共享并立即踢会话）。本增量的立即失效只覆盖同一进程内的 servlet 会话登记 + 数据库状态
+- 真正的 HSM / 云 KMS 与生产密钥托管（仅预留 `iam.vault.type=reserved` 接口）
+- PAM 会话录像 / 视频回放、到真实目标主机的代理登录与自动轮换口令
 - 更细粒度的操作审计检索 API
-- 生产级密钥保险库与密钥轮换（签名密钥不得进入业务库，仅保存 `vault_ref` 或从保险库加载）
+- 浏览器表单登录已强制 MFA；HTTP Basic 管理 API 在本增量中仍只校验口令，不作为生产交互式登录方式

@@ -45,6 +45,7 @@ iam:
     # Dev default: a generated RSA JWK is written here on first start (gitignored).
     # Production must load signing keys from a vault; do not use this file in prod.
     jwk-location: .data/dev-signing-jwk.json
+    signing-key-grace: P7D
     access-token-ttl: PT10M
     refresh-token-ttl: PT8H
     authorization-code-ttl: PT5M
@@ -61,3 +62,14 @@ iam:
       enabled: false
       web-secret: ""
       api-secret: ""
+
+  vault:
+    # file = gitignored local directory (dev). reserved = production interface, no cloud KMS in this increment.
+    type: file
+    directory: .data/vault
+  mfa:
+    issuer: Enterprise IAM
+    pending-ttl: PT5M
+    recovery-code-count: 10
+  pam:
+    checkout-ttl: PT30M

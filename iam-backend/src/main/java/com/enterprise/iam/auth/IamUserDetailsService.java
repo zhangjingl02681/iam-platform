@@ -10,6 +10,7 @@ import com.enterprise.iam.identity.repo.IamRoleRepository;
 import com.enterprise.iam.identity.repo.IamUserRepository;
 import com.enterprise.iam.identity.repo.IamUserRoleRepository;
 import java.time.Instant;
+import java.util.UUID;
 import java.util.List;
 import java.util.Locale;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
@@ -63,6 +64,20 @@ public class IamUserDetailsService implements UserDetailsService {
                 user.getStatus(),
                 credential.getLockedUntil(),
                 authorities);
+    }
+
+
+    @Transactional(readOnly = true)
+    public UserDetails loadUserById(UUID userId) {
+        IamUser user = userRepository
+                .findById(userId)
+                .orElseThrow(() -> new UsernameNotFoundException("User not found"));
+        return loadUserByUsername(user.getUsername());
+    }
+
+    @Transactional(readOnly = true)
+    public String loadUserByIdOrUnknown(UUID userId) {
+        return userRepository.findById(userId).map(IamUser::getUsername).orElse("user");
     }
 
     private boolean isEffective(Instant from, Instant to) {

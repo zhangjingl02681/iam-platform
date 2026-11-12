@@ -37,29 +37,37 @@ public class IamLoginSessionService {
     private final IamRevocationRepository revocationRepository;
     private final IamOAuthAuthorizationRepository authorizationRepository;
     private final IamProperties properties;
+    private final IamServletSessionRegistry servletSessionRegistry;
 
     public IamLoginSessionService(
             IamSessionRepository sessionRepository,
             IamRefreshTokenRepository refreshTokenRepository,
             IamRevocationRepository revocationRepository,
             IamOAuthAuthorizationRepository authorizationRepository,
-            IamProperties properties) {
+            IamProperties properties,
+            IamServletSessionRegistry servletSessionRegistry) {
         this.sessionRepository = sessionRepository;
         this.refreshTokenRepository = refreshTokenRepository;
         this.revocationRepository = revocationRepository;
         this.authorizationRepository = authorizationRepository;
         this.properties = properties;
+        this.servletSessionRegistry = servletSessionRegistry;
     }
 
     @Transactional
     public IamSession createForLogin(HttpServletRequest request, Authentication authentication) {
+        return createForLogin(request, authentication, "pwd");
+    }
+
+    @Transactional
+    public IamSession createForLogin(HttpServletRequest request, Authentication authentication, String amr) {
         if (!(authentication.getPrincipal() instanceof IamPrincipal principal)) {
             return null;
         }
         Instant now = Instant.now();
         IamSession session = new IamSession();
         session.setUserId(principal.getUserId());
-        session.setAmr("pwd");
+        session.setAmr(amr == null || amr.isBlank() ? "pwd" : amr);
         session.setIp(resolveIp(request, authentication));
         session.setUserAgent(trim(request.getHeader("User-Agent"), 512));
         session.setCreatedAt(now);
@@ -68,16 +76,28 @@ public class IamLoginSessionService {
         session.setAbsExpiresAt(now.plus(properties.getOidc().getSessionAbsoluteTimeout()));
         session.setStatus(SessionStatus.ACTIVE);
         session = sessionRepository.save(session);
-        request.getSession(true).setAttribute(SESSION_ATTRIBUTE, session.getId());
+        var httpSession = request.getSession(true);
+        httpSession.setAttribute(SESSION_ATTRIBUTE, session.getId());
+        servletSessionRegistry.bind(session.getId(), httpSession);
         return session;
     }
 
     public Optional<UUID> currentSessionId(HttpServletRequest request) {
-        HttpSession httpSession = request.getSession(false);
+        HttpSession httpSession;
+        try {
+            httpSession = request.getSession(false);
+        } catch (IllegalStateException ex) {
+            return Optional.empty();
+        }
         if (httpSession == null) {
             return Optional.empty();
         }
-        Object value = httpSession.getAttribute(SESSION_ATTRIBUTE);
+        Object value;
+        try {
+            value = httpSession.getAttribute(SESSION_ATTRIBUTE);
+        } catch (IllegalStateException ex) {
+            return Optional.empty();
+        }
         if (value instanceof UUID id) {
             return Optional.of(id);
         }
@@ -108,9 +128,17 @@ public class IamLoginSessionService {
         if (sessionId == null) {
             return false;
         }
-        return sessionRepository.findById(sessionId)
-                .map(session -> session.getStatus() == SessionStatus.ACTIVE)
+        Boolean cached = servletSessionRegistry.cachedActive(sessionId);
+        if (cached != null && !cached) {
+            return false;
+        }
+        boolean active = sessionRepository.findById(sessionId)
+                .map(session -> session.getStatus() == SessionStatus.ACTIVE
+                        && (session.getAbsExpiresAt() == null || !Instant.now().isAfter(session.getAbsExpiresAt()))
+                        && (session.getIdleExpiresAt() == null || !Instant.now().isAfter(session.getIdleExpiresAt())))
                 .orElse(false);
+        servletSessionRegistry.cacheActive(sessionId, active);
+        return active;
     }
 
     @Transactional
@@ -145,6 +173,7 @@ public class IamLoginSessionService {
         session.setRevokedBy(revokedBy);
         session.setRevokeReason(reason);
         sessionRepository.save(session);
+        servletSessionRegistry.markRevoked(sessionId);
         for (IamRefreshToken token : refreshTokenRepository.findBySessionId(sessionId)) {
             if (token.getRevokedAt() == null) {
                 token.setRevokedAt(now);

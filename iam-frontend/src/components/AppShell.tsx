@@ -31,6 +31,7 @@ export function AppShell({ me, children }: { me: Me; children?: React.ReactNode 
           </NavLink>
           <NavLink to="/profile">个人资料</NavLink>
           <NavLink to="/sessions">会话</NavLink>
+          <NavLink to="/pam">特权访问</NavLink>
           <NavLink to="/password">密码</NavLink>
           {me.admin ? <NavLink to="/admin">管理控制台</NavLink> : null}
           <button type="button" className="btn ghost" onClick={() => void logout()}>
